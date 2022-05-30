@@ -22,7 +22,9 @@ class LoginView(generics.CreateAPIView):
         queryset = self.get_queryset()
         user = queryset.get(username=request.data["username"])
         if not check_password(request.data["password"], user.password):
-            raise PermissionError("Invalid password")
+            return Response(
+                {"message": "Invalid Password"}, status=status.HTTP_401_UNAUTHORIZED
+            )
         try:
             api_key = APIKey.objects.get(name=request.data["username"])
             api_key.delete()

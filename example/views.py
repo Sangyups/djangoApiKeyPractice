@@ -1,37 +1,63 @@
-from django.contrib.auth.hashers import check_password
+from django.contrib.auth import authenticate, login
 from django.contrib.auth.models import User
 from rest_framework import generics, status
-from rest_framework.exceptions import ValidationError
+from rest_framework.authentication import SessionAuthentication, TokenAuthentication
+from rest_framework.authtoken.models import Token
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from rest_framework_api_key.models import APIKey
-from rest_framework_api_key.permissions import HasAPIKey
 
+from example.models import UserAPIKey
 from example.serializers import UserSerializer
 
 
 class UserListView(generics.ListCreateAPIView):
     queryset = User.objects.all()
     serializer_class = UserSerializer
-    permission_classes = [HasAPIKey]
+    authentication_classes = [SessionAuthentication, TokenAuthentication]
+    permission_classes = [IsAuthenticated]
 
 
 class APIKeyView(generics.CreateAPIView):
     serializer_class = UserSerializer
     queryset = User.objects.all()
+    authentication_classes = [SessionAuthentication, TokenAuthentication]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
-        queryset = self.get_queryset()
-        try:
-            user = queryset.get(username=request.data["username"])
-            if not check_password(request.data["password"], user.password):
-                raise ValidationError("Invalid password")
-        except (User.DoesNotExist, ValidationError):
-            return Response(
-                {"message": "Invalid username or password"},
-                status=status.HTTP_401_UNAUTHORIZED,
-            )
-        if APIKey.objects.filter(name__exact=request.data["username"]).exists():
-            APIKey.objects.filter(name__exact=request.data["username"]).delete()
+        user = request.user
 
-        api_key, key = APIKey.objects.create_key(name=request.data["username"])
+        if hasattr(user, "api_key"):
+            user.api_key.delete()
+
+        api_key, key = UserAPIKey.objects.create_key(name=user.username, user=user)
+
         return Response({"api_key": key}, status=status.HTTP_200_OK)
+
+
+class SessionSignInView(generics.CreateAPIView):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+    authentication_classes = [SessionAuthentication]
+
+    def post(self, request, *args, **kwargs):
+        username = request.data["username"]
+        password = request.data["password"]
+
+        user = authenticate(request, username=username, password=password)
+        login(request, user)
+        return Response(self.get_serializer(user).data, status=status.HTTP_201_CREATED)
+
+
+class TokenSignInView(generics.CreateAPIView):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+    authentication_classes = [TokenAuthentication]
+
+    def post(self, request, *args, **kwargs):
+        username = request.data["username"]
+        password = request.data["password"]
+
+        user = authenticate(request, username=username, password=password)
+        token = Token.objects.get_or_create(user=user)
+
+        return Response({"token": str(token[0])}, status=status.HTTP_201_CREATED)

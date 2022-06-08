@@ -7,6 +7,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from example.models import UserAPIKey
+from example.permissions import HasUserAPIKey
 from example.serializers import UserSerializer
 
 
@@ -14,7 +15,11 @@ class UserListView(generics.ListCreateAPIView):
     queryset = User.objects.all()
     serializer_class = UserSerializer
     authentication_classes = [SessionAuthentication, TokenAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated | HasUserAPIKey]
+
+    def get(self, request, *args, **kwargs):
+        print(request.user)
+        return self.list(request, *args, **kwargs)
 
 
 class APIKeyView(generics.CreateAPIView):
